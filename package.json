@@ -1,0 +1,50 @@
+{
+  "name": "vora-voice-interview",
+  "version": "1.0.0",
+  "description": "Voice-powered interview system for event staffing using ElevenLabs TTS and Google Cloud Speech-to-Text",
+  "keywords": [
+    "voice-interview",
+    "elevenlabs",
+    "google-cloud",
+    "speech-to-text",
+    "text-to-speech",
+    "hiring",
+    "event-staffing",
+    "ai",
+    "conversational-ai"
+  ],
+  "author": "Vora.now",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/osasisorae/vora-voice-interview.git"
+  },
+  "bugs": {
+    "url": "https://github.com/osasisorae/vora-voice-interview/issues"
+  },
+  "homepage": "https://github.com/osasisorae/vora-voice-interview#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
+    "build": "tsc && vite build",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^1.0.0",
+    "@google-cloud/speech": "^5.0.0",
+    "busboy": "^1.6.0",
+    "express": "^4.18.0"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

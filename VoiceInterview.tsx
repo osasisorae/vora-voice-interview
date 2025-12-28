@@ -14,18 +14,43 @@ interface VoiceInterviewProps {
 
 const MIN_DURATION_FOR_COMPLETE = 60;
 
+// Helper to escape strings for HTML attribute
+function escapeForJson(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/'/g, "\\'");
+}
+
 export function VoiceInterview({ 
-  agentId, 
+  agentId,
+  roleTitle,
+  roleDescription,
+  interviewQuestions,
+  userName,
   onInterviewComplete 
 }: VoiceInterviewProps) {
   const [callStatus, setCallStatus] = useState<'idle' | 'active' | 'ended'>('idle');
   const [callResult, setCallResult] = useState<'completed' | 'incomplete' | null>(null);
   const startTimeRef = useRef<Date | null>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
+
+  // Build dynamic variables JSON - escape special characters
+  const dynamicVarsJson = JSON.stringify({
+    user_name: escapeForJson(userName || 'there'),
+    role_title: escapeForJson(roleTitle),
+    role_description: escapeForJson(roleDescription.substring(0, 200)),
+    interview_questions: escapeForJson(interviewQuestions.slice(0, 3).join(' | ')),
+  });
 
   const handleCallEnd = useCallback(() => {
     const duration = startTimeRef.current 
       ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
       : 0;
+    
+    console.log(`📊 Interview duration: ${Math.round(duration)}s`);
     
     const isComplete = duration >= MIN_DURATION_FOR_COMPLETE;
     setCallStatus('ended');
@@ -49,10 +74,12 @@ export function VoiceInterview({
       const widget = document.querySelector('elevenlabs-convai');
       if (widget) {
         widget.addEventListener('elevenlabs-convai:call', () => {
+          console.log('📞 Call started');
           setCallStatus('active');
           startTimeRef.current = new Date();
         });
         widget.addEventListener('elevenlabs-convai:call-end', () => {
+          console.log('📞 Call ended');
           handleCallEnd();
         });
       }
@@ -115,10 +142,13 @@ export function VoiceInterview({
         </Alert>
       )}
 
-      {/* Pure default widget - just agent-id */}
-      <div dangerouslySetInnerHTML={{
-        __html: `<elevenlabs-convai agent-id="${agentId}"></elevenlabs-convai>`
-      }} />
+      {/* Widget with dynamic variables - default phone icon UI */}
+      <div 
+        ref={widgetRef}
+        dangerouslySetInnerHTML={{
+          __html: `<elevenlabs-convai agent-id="${agentId}" dynamic-variables='${dynamicVarsJson}'></elevenlabs-convai>`
+        }} 
+      />
 
       {callStatus === 'idle' && (
         <p className="text-sm text-muted-foreground">

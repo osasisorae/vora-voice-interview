@@ -37,6 +37,7 @@ export function VoiceInterview({
   const startTimeRef = useRef<Date | null>(null);
   const widgetContainerRef = useRef<HTMLDivElement>(null);
   const widgetCreatedRef = useRef(false);
+  const callEndedRef = useRef(false);
 
   // Build dynamic variables - clean text to avoid JSON/HTML issues
   const dynamicVars = {
@@ -48,6 +49,10 @@ export function VoiceInterview({
   const dynamicVarsJson = JSON.stringify(dynamicVars).replace(/'/g, '&#39;');
 
   const handleCallEnd = useCallback(() => {
+    // Prevent multiple calls
+    if (callEndedRef.current) return;
+    callEndedRef.current = true;
+
     const duration = startTimeRef.current 
       ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
       : 0;
@@ -84,27 +89,85 @@ export function VoiceInterview({
 
     const setupListeners = () => {
       const widget = document.querySelector('elevenlabs-convai');
-      if (widget) {
-        widget.addEventListener('elevenlabs-convai:call', () => {
-          console.log('📞 Call started');
-          setCallStatus('active');
-          startTimeRef.current = new Date();
-        });
-        widget.addEventListener('elevenlabs-convai:call-end', () => {
-          console.log('📞 Call ended');
+      if (!widget) return;
+
+      // Listen for call start
+      widget.addEventListener('elevenlabs-convai:call', () => {
+        console.log('📞 Call started');
+        setCallStatus('active');
+        startTimeRef.current = new Date();
+        callEndedRef.current = false;
+      });
+
+      // Try multiple event names for call end
+      const endEventNames = [
+        'elevenlabs-convai:call-end',
+        'elevenlabs-convai:call:end',
+        'elevenlabs-convai:disconnect',
+        'elevenlabs-convai:conversation-end',
+        'elevenlabs-convai:ended',
+      ];
+
+      endEventNames.forEach(eventName => {
+        widget.addEventListener(eventName, () => {
+          console.log(`📞 Call ended via event: ${eventName}`);
           handleCallEnd();
         });
-      }
+      });
+
+      // Also listen on window/document for global events
+      endEventNames.forEach(eventName => {
+        window.addEventListener(eventName, () => {
+          console.log(`📞 Call ended via window event: ${eventName}`);
+          handleCallEnd();
+        });
+      });
+
+      // Use MutationObserver to detect when widget shows "conversation ended" UI
+      const observer = new MutationObserver((mutations) => {
+        const widgetEl = document.querySelector('elevenlabs-convai');
+        if (widgetEl) {
+          // Check shadow DOM for end-of-call indicators
+          const shadowRoot = (widgetEl as any).shadowRoot;
+          if (shadowRoot) {
+            const text = shadowRoot.textContent || '';
+            if (text.includes('ended the conversation') || 
+                text.includes('How was this conversation') ||
+                text.includes('New call')) {
+              console.log('📞 Call ended detected via MutationObserver');
+              handleCallEnd();
+            }
+          }
+        }
+      });
+
+      // Observe the widget for changes
+      observer.observe(document.body, { 
+        childList: true, 
+        subtree: true,
+        characterData: true,
+        attributes: true
+      });
+
+      // Cleanup observer on unmount
+      return () => observer.disconnect();
     };
 
-    setTimeout(setupListeners, 500);
-    setTimeout(setupListeners, 1500);
+    // Try setting up listeners multiple times as widget loads async
+    const timers = [
+      setTimeout(setupListeners, 500),
+      setTimeout(setupListeners, 1500),
+      setTimeout(setupListeners, 3000),
+    ];
+
+    return () => timers.forEach(t => clearTimeout(t));
   }, [agentId, dynamicVarsJson, handleCallEnd]);
 
   const retryInterview = () => {
     setCallResult(null);
     setCallStatus('idle');
     startTimeRef.current = null;
+    callEndedRef.current = false;
     window.location.reload();
   };
 

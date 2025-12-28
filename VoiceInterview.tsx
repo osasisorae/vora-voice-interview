@@ -1,8 +1,7 @@
-import { useConversation } from '@elevenlabs/react';
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, CheckCircle, RotateCcw, PhoneOff, Mic, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 
 interface VoiceInterviewProps {
   agentId: string;
@@ -16,6 +15,17 @@ interface VoiceInterviewProps {
 // Minimum duration in seconds to consider interview complete
 const MIN_DURATION_FOR_COMPLETE = 60; // 1 minute minimum
 
+// Helper to escape strings for use in HTML attributes
+function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, ' ');
+}
+
 export function VoiceInterview({ 
   agentId, 
   roleTitle, 
@@ -24,116 +34,87 @@ export function VoiceInterview({
   userName,
   onInterviewComplete 
 }: VoiceInterviewProps) {
-  const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'active' | 'ended'>('idle');
+  const [callStatus, setCallStatus] = useState<'idle' | 'active' | 'ended'>('idle');
   const [callResult, setCallResult] = useState<'completed' | 'incomplete' | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const startTimeRef = useRef<Date | null>(null);
+  const widgetContainerRef = useRef<HTMLDivElement>(null);
 
-  const conversation = useConversation({
-    onConnect: () => {
-      console.log('📞 Connected to ElevenLabs');
-      setCallStatus('active');
-      startTimeRef.current = new Date();
-      setError(null);
-    },
-    onDisconnect: () => {
-      console.log('📞 Disconnected from ElevenLabs');
-      // Calculate duration and determine result
-      const duration = startTimeRef.current 
-        ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
-        : 0;
-      
-      console.log(`📊 Interview duration: ${Math.round(duration)}s`);
-      
-      if (callStatus === 'active') {
-        const isComplete = duration >= MIN_DURATION_FOR_COMPLETE;
-        setCallStatus('ended');
-        setCallResult(isComplete ? 'completed' : 'incomplete');
-        
-        if (isComplete) {
-          setTimeout(() => {
-            onInterviewComplete('completed');
-          }, 3000);
-        }
+  // Prepare dynamic variables for the agent - escape special characters
+  const dynamicVariables = {
+    user_name: userName || 'there',
+    role_title: roleTitle,
+    role_description: roleDescription.substring(0, 200), // Limit length
+    interview_questions: interviewQuestions.slice(0, 3).join(' | '), // Limit to 3 questions
+  };
+
+  // Create a safe JSON string for the HTML attribute
+  const safeJsonString = escapeHtmlAttr(JSON.stringify(dynamicVariables));
+
+  const handleCallEnd = useCallback(() => {
+    // Calculate duration and determine result
+    const duration = startTimeRef.current 
+      ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
+      : 0;
+    
+    console.log(`📊 Interview duration: ${Math.round(duration)}s`);
+    
+    const isComplete = duration >= MIN_DURATION_FOR_COMPLETE;
+    
+    setCallStatus('ended');
+    setCallResult(isComplete ? 'completed' : 'incomplete');
+    
+    if (isComplete) {
+      setTimeout(() => {
+        onInterviewComplete('completed');
+      }, 3000);
+    }
+  }, [onInterviewComplete]);
+
+  useEffect(() => {
+    // Load the widget script if not already loaded
+    if (!document.querySelector('script[src*="convai-widget-embed"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+      script.async = true;
+      script.type = 'text/javascript';
+      document.body.appendChild(script);
+    }
+
+    // Set up event listeners after a short delay to ensure widget is loaded
+    const setupListeners = () => {
+      const widget = document.querySelector('elevenlabs-convai');
+      if (widget) {
+        // Listen for call start
+        widget.addEventListener('elevenlabs-convai:call', (event: any) => {
+          console.log('📞 Call started', event.detail);
+          setCallStatus('active');
+          startTimeRef.current = new Date();
+        });
+
+        // Listen for call end
+        widget.addEventListener('elevenlabs-convai:call-end', (event: any) => {
+          console.log('📞 Call ended', event.detail);
+          handleCallEnd();
+        });
       }
-    },
-    onMessage: (message) => {
-      console.log('💬 Message:', message);
-    },
-    onError: (error) => {
-      console.error('❌ Conversation error:', error);
-      setError('Connection error. Please try again.');
-      setCallStatus('idle');
-    },
-  });
+    };
 
-  const startInterview = useCallback(async () => {
-    try {
-      setCallStatus('connecting');
-      setError(null);
-      
-      // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Build the custom prompt with user info and role details
-      const customPrompt = `You are Ehi, a friendly and professional AI interviewer for Vora.now, a platform that connects event staff with event organizers.
+    // Try to set up listeners immediately and also after delays
+    setupListeners();
+    const timeoutId = setTimeout(setupListeners, 1000);
+    const timeoutId2 = setTimeout(setupListeners, 2000);
 
-You are interviewing ${userName || 'a candidate'} for the ${roleTitle} position.
+    return () => {
+      clearTimeout(timeoutId);
+      clearTimeout(timeoutId2);
+    };
+  }, [agentId, handleCallEnd]);
 
-Role Description: ${roleDescription}
-
-Interview Questions to ask (ask these one at a time, naturally):
-${interviewQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
-Guidelines:
-- Greet the candidate warmly by name if provided
-- Ask questions one at a time and wait for responses
-- Be encouraging and professional
-- Keep the conversation natural and flowing
-- After asking all questions, thank them and let them know their application will be reviewed`;
-
-      // Start the conversation with the agent
-      await conversation.startSession({
-        agentId,
-        connectionType: 'webrtc',
-        overrides: {
-          agent: {
-            prompt: {
-              prompt: customPrompt,
-            },
-            firstMessage: `Hi ${userName || 'there'}! I'm Ehi, and I'll be conducting your interview for the ${roleTitle} position at Vora.now today. Are you ready to begin?`,
-          },
-        },
-      });
-      
-    } catch (err) {
-      console.error('Failed to start conversation:', err);
-      setError('Failed to start interview. Please check your microphone permissions and try again.');
-      setCallStatus('idle');
-    }
-  }, [agentId, conversation, roleTitle, roleDescription, interviewQuestions, userName]);
-
-  const endInterview = useCallback(async () => {
-    try {
-      await conversation.endSession();
-    } catch (err) {
-      console.error('Failed to end conversation:', err);
-      // Force end state even if API call fails
-      const duration = startTimeRef.current 
-        ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
-        : 0;
-      const isComplete = duration >= MIN_DURATION_FOR_COMPLETE;
-      setCallStatus('ended');
-      setCallResult(isComplete ? 'completed' : 'incomplete');
-    }
-  }, [conversation]);
-
-  const retryInterview = useCallback(() => {
+  const retryInterview = () => {
     setCallResult(null);
     setCallStatus('idle');
-    setError(null);
     startTimeRef.current = null;
-  }, []);
+  };
 
   // Show result after call ends
   if (callStatus === 'ended' && callResult) {
@@ -184,69 +165,44 @@ Guidelines:
       <div className="text-center space-y-2">
         <h3 className="text-2xl font-semibold">Voice Interview with Ehi</h3>
         <p className="text-muted-foreground max-w-md">
-          {callStatus === 'idle' && "Click the button below to start your interview. Speak naturally and answer Ehi's questions about your experience."}
-          {callStatus === 'connecting' && "Connecting to Ehi..."}
-          {callStatus === 'active' && "Interview in progress. Speak naturally and answer Ehi's questions."}
+          {callStatus === 'idle' 
+            ? "Click the green orb button below to start your interview. Speak naturally and answer Ehi's questions about your experience."
+            : "Interview in progress. Speak naturally and answer Ehi's questions. Click the orb again to end the call."}
         </p>
       </div>
 
-      {error && (
-        <Alert variant="destructive" className="max-w-md">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+      {callStatus === 'active' && (
+        <Alert className="max-w-md border-emerald-200 bg-emerald-50">
+          <AlertDescription className="text-sm text-emerald-800">
+            Interview in progress. Complete at least 1 minute for your application to be considered.
+            <br /><strong>Click the green orb to end the interview when done.</strong>
+          </AlertDescription>
         </Alert>
       )}
 
-      {/* Idle state - show start button */}
+      {/* ElevenLabs Widget */}
+      <div
+        ref={widgetContainerRef}
+        dangerouslySetInnerHTML={{
+          __html: `
+            <elevenlabs-convai
+              agent-id="${agentId}"
+              avatar-orb-color-1="#10B981"
+              avatar-orb-color-2="#059669"
+              action-text="Start Interview"
+              start-call-text="Begin Interview"
+              end-call-text="End Interview"
+              listening-text="Listening..."
+              speaking-text="Ehi is speaking..."
+              dynamic-variables='${safeJsonString}'
+            ></elevenlabs-convai>
+          `,
+        }}
+      />
+
       {callStatus === 'idle' && (
-        <div className="flex flex-col items-center gap-4">
-          <Button 
-            onClick={startInterview}
-            size="lg"
-            className="bg-emerald-600 hover:bg-emerald-700 h-16 px-8 text-lg"
-          >
-            <Mic className="mr-2 h-5 w-5" />
-            Start Voice Interview
-          </Button>
-          <div className="text-sm text-muted-foreground text-center max-w-md">
-            <p>💡 Tip: Find a quiet space and speak clearly. The interview typically takes 3-5 minutes.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Connecting state */}
-      {callStatus === 'connecting' && (
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center animate-pulse">
-            <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
-          </div>
-          <p className="text-muted-foreground">Connecting to Ehi...</p>
-        </div>
-      )}
-
-      {/* Active call state */}
-      {callStatus === 'active' && (
-        <div className="flex flex-col items-center gap-4">
-          {/* Speaking indicator */}
-          <div className="h-20 w-20 rounded-full bg-emerald-500 flex items-center justify-center animate-pulse">
-            <Mic className="h-10 w-10 text-white" />
-          </div>
-          
-          <Alert className="max-w-md border-emerald-200 bg-emerald-50">
-            <AlertDescription className="text-sm text-emerald-800">
-              Interview in progress. Complete at least 1 minute for your application to be considered.
-            </AlertDescription>
-          </Alert>
-          
-          <Button 
-            onClick={endInterview}
-            variant="destructive"
-            size="lg"
-            className="bg-red-600 hover:bg-red-700"
-          >
-            <PhoneOff className="mr-2 h-4 w-4" />
-            End Interview
-          </Button>
+        <div className="text-sm text-muted-foreground text-center max-w-md">
+          <p>💡 Tip: Find a quiet space and speak clearly. The interview typically takes 3-5 minutes.</p>
         </div>
       )}
     </div>

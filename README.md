@@ -1,8 +1,8 @@
-# Vora.now - Voice Interview System
+# Vora Voice Interview System
 
 **ElevenLabs + Google Cloud AI Hackathon Submission**
 
-Vora.now is a conversational voice interview system that transforms hiring for Africa's informal workforce. Using ElevenLabs for natural speech synthesis and Google Cloud Speech-to-Text for real-time transcription, we've built a two-way voice conversation that removes friction from the gig economy hiring process.
+A conversational voice interview system that transforms hiring for Africa's informal workforce. Using ElevenLabs for natural speech synthesis and Google Cloud Speech-to-Text for real-time transcription, we've built a two-way voice conversation that removes friction from the gig economy hiring process.
 
 ## Problem
 
@@ -16,9 +16,9 @@ Africa's informal workforce (93% of Nigerian workers) remains invisible to forma
 
 1. **Candidate applies** for an event gig on Vora.now
 2. **Selects voice interview** option during application
-3. **AI asks 5 questions** via natural speech (ElevenLabs TTS)
+3. **AI asks questions** via natural speech (ElevenLabs Conversational AI)
 4. **Candidate speaks answers** using microphone
-5. **Google Cloud Speech-to-Text** transcribes responses in real-time
+5. **Real-time conversation** with turn-taking and natural flow
 6. **Gemini AI evaluates** candidate fit and provides scoring
 7. **Results saved** for admin review and hiring decisions
 
@@ -27,8 +27,8 @@ Africa's informal workforce (93% of Nigerian workers) remains invisible to forma
 ### Frontend
 - **React 19** - UI framework
 - **Tailwind CSS 4** - Styling
-- **MediaRecorder API** - Audio capture from browser microphone
-- **Web Audio API** - Audio playback
+- **ElevenLabs Widget** - Conversational AI embed
+- **@elevenlabs/react** - React SDK for voice conversations
 
 ### Backend
 - **Express.js** - API server
@@ -36,8 +36,7 @@ Africa's informal workforce (93% of Nigerian workers) remains invisible to forma
 - **Node.js** - Runtime
 
 ### AI & Voice
-- **ElevenLabs API** - Text-to-speech (eleven_multilingual_v2 model)
-- **Google Cloud Speech-to-Text** - Speech recognition with MP3 support
+- **ElevenLabs Conversational AI** - Real-time voice conversations with STT + TTS + turn-taking
 - **Google Gemini** - Candidate evaluation and scoring
 
 ### Database
@@ -48,63 +47,64 @@ Africa's informal workforce (93% of Nigerian workers) remains invisible to forma
 
 ```
 vora-voice-interview/
-├── client/
-│   └── src/
-│       └── pages/
-│           └── VoiceInterviewStep.tsx       # Voice interview UI component
-├── server/
-│   ├── _core/
-│   │   ├── voiceInterview.ts               # TTS & STT functions
-│   │   ├── voiceRoutes.ts                  # Express routes for voice APIs
-│   │   └── env.ts                          # Environment configuration
-│   └── routers/
-│       └── interview.ts                    # tRPC interview procedures
-├── drizzle/
-│   └── schema.ts                           # Database schema
+├── VoiceInterview.tsx          # Voice interview component (ElevenLabs widget)
+├── ChatInterview.tsx           # Chat interview component (text-based alternative)
+├── roles.ts                    # Role definitions and interview questions
+├── RoleApplication.tsx         # Role application page
+├── roleApplications.ts         # tRPC router for applications
 └── README.md
 ```
 
 ## Features
 
-### Current (MVP)
-- ✅ Real-time voice conversation with AI
-- ✅ 5-question structured interview
-- ✅ Audio recording and transcription
-- ✅ Candidate response storage
-- ✅ Admin review dashboard
-- ✅ Feature flag for safe deployment
+### Voice Interview
+- ✅ Real-time voice conversation with AI (Ehi)
+- ✅ Natural turn-taking and interruption handling
+- ✅ Role-specific interview questions
+- ✅ Dynamic variables (user name, role title)
+- ✅ Call duration tracking
+- ✅ Completion status detection
 
-### Coming Soon
-- 🎥 Video interview option (candidate records video responses)
-- 📊 Advanced candidate scoring with ML
-- 🌍 Multi-language support
-- 🎯 Role-specific interview templates
-- 📱 Mobile app for candidates
+### Chat Interview (Alternative)
+- ✅ Text-based conversation with AI
+- ✅ Same interview questions as voice
+- ✅ Copy-paste disabled for integrity
+- ✅ Message history display
+- ✅ Typing indicators
+
+### Feature Flag
+Toggle between voice and chat interviews with environment variable:
+```env
+VITE_USE_VOICE_INTERVIEW=true   # Voice interviews (default)
+VITE_USE_VOICE_INTERVIEW=false  # Chat interviews
+```
 
 ## Getting Started
 
 ### Prerequisites
 - Node.js 18+
 - pnpm package manager
-- Google Cloud project with Speech-to-Text API enabled
-- ElevenLabs account with API key
+- ElevenLabs account with Conversational AI agent
+- Google Cloud project with Gemini API enabled
 
 ### Environment Setup
 
-Create a `.env.local` file with:
+Create a `.env` file with:
 
 ```env
-# Google Cloud
-GOOGLE_SERVICE_ACCOUNT_B64=<base64-encoded service account JSON>
-GOOGLE_AI_API_KEY=<your-google-ai-api-key>
-
 # ElevenLabs
 ELEVENLABS_API_KEY=<your-elevenlabs-api-key>
+ELEVENLABS_AGENT_ID=<your-agent-id>
+VITE_ELEVENLABS_AGENT_ID=<your-agent-id>
+
+# Google AI
+GOOGLE_AI_API_KEY=<your-google-ai-api-key>
 
 # Database
 DATABASE_URL=<your-database-url>
 
 # Feature Flags
+VITE_USE_VOICE_INTERVIEW=true
 ENABLE_VOICE_INTERVIEWS=true
 ```
 
@@ -123,50 +123,48 @@ pnpm dev
 
 Server runs at `http://localhost:3000`
 
-## API Endpoints
+## ElevenLabs Agent Configuration
 
-### TTS (Text-to-Speech)
+### Setting Up Your Agent
+
+1. Go to [ElevenLabs](https://elevenlabs.io) and create a Conversational AI agent
+2. Configure the agent's system prompt to use dynamic variables:
+
 ```
-POST /api/voice/speak
-Content-Type: application/json
+You are Ehi, a friendly Nigerian recruiter for Vora.now. You're interviewing {{user_name}} for the {{role_title}} position.
 
-{
-  "text": "Tell us about your experience in event staffing"
-}
+Your role is to:
+1. Greet the candidate warmly by name
+2. Ask about their experience relevant to the {{role_title}} role
+3. Ask the interview questions provided
+4. Keep the conversation natural and encouraging
+5. Thank them at the end
 
-Response: audio/mpeg (MP3 audio buffer)
+Interview questions to ask:
+{{interview_questions}}
 ```
 
-### STT (Speech-to-Text)
-```
-POST /api/voice/transcribe
-Content-Type: multipart/form-data
+3. Copy your Agent ID and add it to your environment variables
 
-FormData:
-  - audio: <audio blob from MediaRecorder>
+### Dynamic Variables
 
-Response: { "text": "I have 5 years of experience..." }
-```
+The widget passes these variables to your agent:
+- `user_name` - The candidate's name
+- `role_title` - The role they're applying for (e.g., "Bartender")
+- `role_description` - Description of the role
+- `interview_questions` - Role-specific questions to ask
 
 ## Contributing
 
-We welcome contributions to enhance the voice interview system! 
+We welcome contributions to enhance the voice interview system!
 
 ### Areas for Contribution
 
-#### 🎤 Audio Enhancement
-- Improve speech recognition accuracy
+#### 🎤 Voice Enhancement
+- Improve conversation flow
 - Add support for multiple languages
-- Optimize audio encoding for different network conditions
-- Implement voice activity detection (VAD)
+- Implement voice activity detection
 - Add audio quality assessment
-
-#### 🎥 Video Interview Feature
-- Implement video recording from browser camera
-- Add video playback in admin dashboard
-- Create video quality checks
-- Implement video compression for storage
-- Add facial expression analysis (optional)
 
 #### 🤖 AI & Evaluation
 - Improve candidate scoring algorithms
@@ -174,10 +172,16 @@ We welcome contributions to enhance the voice interview system!
 - Implement role-specific evaluation criteria
 - Create interview templates for different job types
 
+#### 📱 User Experience
+- Mobile optimization
+- Accessibility improvements
+- Better error handling
+- Progress indicators
+
 ### How to Contribute
 
 1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/audio-enhancement`)
+2. **Create a feature branch** (`git checkout -b feature/your-feature`)
 3. **Make your changes** with clear commit messages
 4. **Add tests** for new functionality
 5. **Submit a pull request** with description of changes
@@ -203,7 +207,7 @@ pnpm test -- --watch
 
 ## Deployment
 
-The system is designed to run on Manus platform with automatic scaling and monitoring. For external deployment:
+For production deployment:
 
 1. Ensure all environment variables are set
 2. Run database migrations: `pnpm db:push`
@@ -212,9 +216,8 @@ The system is designed to run on Manus platform with automatic scaling and monit
 
 ## Performance Metrics
 
-- **Interview Duration**: 5-10 minutes
-- **Audio Latency**: <500ms (TTS generation + playback)
-- **Transcription Latency**: <2 seconds
+- **Interview Duration**: 3-5 minutes
+- **Voice Latency**: Real-time with ElevenLabs Conversational AI
 - **Candidate Evaluation**: <5 seconds
 
 ## Security
@@ -233,14 +236,12 @@ MIT License - See LICENSE file for details
 
 For issues, questions, or feature requests:
 - Open an issue on GitHub
-- Join our Discord community
-- Email: support@vora.now
+- Email: osasisorae@gmail.com
 
 ## Acknowledgments
 
-- **ElevenLabs** - Natural voice synthesis
-- **Google Cloud** - Speech recognition and AI
-- **Manus** - Platform and infrastructure
+- **ElevenLabs** - Conversational AI platform
+- **Google Cloud** - Gemini AI for evaluation
 
 ---
 

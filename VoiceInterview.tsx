@@ -12,111 +12,63 @@ interface VoiceInterviewProps {
   onInterviewComplete: (status: 'completed' | 'incomplete') => void;
 }
 
-// Minimum duration in seconds to consider interview complete
-const MIN_DURATION_FOR_COMPLETE = 60; // 1 minute minimum
-
-// Helper to escape strings for use in HTML attributes
-function escapeHtmlAttr(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/'/g, '&#39;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, ' ');
-}
+const MIN_DURATION_FOR_COMPLETE = 60;
 
 export function VoiceInterview({ 
   agentId, 
-  roleTitle, 
-  roleDescription, 
-  interviewQuestions,
-  userName,
   onInterviewComplete 
 }: VoiceInterviewProps) {
   const [callStatus, setCallStatus] = useState<'idle' | 'active' | 'ended'>('idle');
   const [callResult, setCallResult] = useState<'completed' | 'incomplete' | null>(null);
   const startTimeRef = useRef<Date | null>(null);
-  const widgetContainerRef = useRef<HTMLDivElement>(null);
-
-  // Prepare dynamic variables for the agent - escape special characters
-  const dynamicVariables = {
-    user_name: userName || 'there',
-    role_title: roleTitle,
-    role_description: roleDescription.substring(0, 200), // Limit length
-    interview_questions: interviewQuestions.slice(0, 3).join(' | '), // Limit to 3 questions
-  };
-
-  // Create a safe JSON string for the HTML attribute
-  const safeJsonString = escapeHtmlAttr(JSON.stringify(dynamicVariables));
 
   const handleCallEnd = useCallback(() => {
-    // Calculate duration and determine result
     const duration = startTimeRef.current 
       ? (new Date().getTime() - startTimeRef.current.getTime()) / 1000 
       : 0;
     
-    console.log(`📊 Interview duration: ${Math.round(duration)}s`);
-    
     const isComplete = duration >= MIN_DURATION_FOR_COMPLETE;
-    
     setCallStatus('ended');
     setCallResult(isComplete ? 'completed' : 'incomplete');
     
     if (isComplete) {
-      setTimeout(() => {
-        onInterviewComplete('completed');
-      }, 3000);
+      setTimeout(() => onInterviewComplete('completed'), 3000);
     }
   }, [onInterviewComplete]);
 
   useEffect(() => {
-    // Load the widget script if not already loaded
+    // Load widget script
     if (!document.querySelector('script[src*="convai-widget-embed"]')) {
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
       script.async = true;
-      script.type = 'text/javascript';
       document.body.appendChild(script);
     }
 
-    // Set up event listeners after a short delay to ensure widget is loaded
     const setupListeners = () => {
       const widget = document.querySelector('elevenlabs-convai');
       if (widget) {
-        // Listen for call start
-        widget.addEventListener('elevenlabs-convai:call', (event: any) => {
-          console.log('📞 Call started', event.detail);
+        widget.addEventListener('elevenlabs-convai:call', () => {
           setCallStatus('active');
           startTimeRef.current = new Date();
         });
-
-        // Listen for call end
-        widget.addEventListener('elevenlabs-convai:call-end', (event: any) => {
-          console.log('📞 Call ended', event.detail);
+        widget.addEventListener('elevenlabs-convai:call-end', () => {
           handleCallEnd();
         });
       }
     };
 
-    // Try to set up listeners immediately and also after delays
-    setupListeners();
-    const timeoutId = setTimeout(setupListeners, 1000);
-    const timeoutId2 = setTimeout(setupListeners, 2000);
-
-    return () => {
-      clearTimeout(timeoutId);
-      clearTimeout(timeoutId2);
-    };
-  }, [agentId, handleCallEnd]);
+    setTimeout(setupListeners, 500);
+    setTimeout(setupListeners, 1500);
+  }, [handleCallEnd]);
 
   const retryInterview = () => {
     setCallResult(null);
     setCallStatus('idle');
     startTimeRef.current = null;
+    window.location.reload();
   };
 
-  // Show result after call ends
   if (callStatus === 'ended' && callResult) {
     return (
       <div className="flex flex-col items-center justify-center p-8 space-y-6">
@@ -125,34 +77,22 @@ export function VoiceInterview({
             <div className="h-20 w-20 rounded-full bg-emerald-100 flex items-center justify-center">
               <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
-            <div className="text-center space-y-2">
-              <h3 className="text-2xl font-semibold text-emerald-700">Interview Complete!</h3>
-              <p className="text-muted-foreground max-w-md">
-                Great job! Your interview has been submitted for review. We'll get back to you within 24-48 hours.
-              </p>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Redirecting to confirmation...
-            </div>
+            <h3 className="text-2xl font-semibold text-emerald-700">Interview Complete!</h3>
+            <p className="text-muted-foreground max-w-md text-center">
+              Great job! We'll get back to you within 24-48 hours.
+            </p>
           </>
         ) : (
           <>
             <div className="h-20 w-20 rounded-full bg-amber-100 flex items-center justify-center">
               <AlertCircle className="h-10 w-10 text-amber-600" />
             </div>
-            <div className="text-center space-y-2">
-              <h3 className="text-2xl font-semibold text-amber-700">Interview Incomplete</h3>
-              <p className="text-muted-foreground max-w-md">
-                It looks like the interview ended early. To be considered for the role, please complete the full interview with Ehi (at least 1 minute).
-              </p>
-            </div>
-            <Button 
-              onClick={retryInterview}
-              size="lg"
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Try Again
+            <h3 className="text-2xl font-semibold text-amber-700">Interview Incomplete</h3>
+            <p className="text-muted-foreground max-w-md text-center">
+              Please complete at least 1 minute to be considered.
+            </p>
+            <Button onClick={retryInterview} className="bg-emerald-600 hover:bg-emerald-700">
+              <RotateCcw className="mr-2 h-4 w-4" /> Try Again
             </Button>
           </>
         )}
@@ -162,48 +102,28 @@ export function VoiceInterview({
 
   return (
     <div className="flex flex-col items-center justify-center p-8 space-y-6">
-      <div className="text-center space-y-2">
-        <h3 className="text-2xl font-semibold">Voice Interview with Ehi</h3>
-        <p className="text-muted-foreground max-w-md">
-          {callStatus === 'idle' 
-            ? "Click the green orb button below to start your interview. Speak naturally and answer Ehi's questions about your experience."
-            : "Interview in progress. Speak naturally and answer Ehi's questions. Click the orb again to end the call."}
-        </p>
-      </div>
+      <h3 className="text-2xl font-semibold">Voice Interview with Ehi</h3>
+      <p className="text-muted-foreground max-w-md text-center">
+        Click the phone icon to start. Click it again to end.
+      </p>
 
       {callStatus === 'active' && (
         <Alert className="max-w-md border-emerald-200 bg-emerald-50">
           <AlertDescription className="text-sm text-emerald-800">
-            Interview in progress. Complete at least 1 minute for your application to be considered.
-            <br /><strong>Click the green orb to end the interview when done.</strong>
+            Interview in progress. Complete at least 1 minute.
           </AlertDescription>
         </Alert>
       )}
 
-      {/* ElevenLabs Widget */}
-      <div
-        ref={widgetContainerRef}
-        dangerouslySetInnerHTML={{
-          __html: `
-            <elevenlabs-convai
-              agent-id="${agentId}"
-              avatar-orb-color-1="#10B981"
-              avatar-orb-color-2="#059669"
-              action-text="Start Interview"
-              start-call-text="Begin Interview"
-              end-call-text="End Interview"
-              listening-text="Listening..."
-              speaking-text="Ehi is speaking..."
-              dynamic-variables='${safeJsonString}'
-            ></elevenlabs-convai>
-          `,
-        }}
-      />
+      {/* Pure default widget - just agent-id */}
+      <div dangerouslySetInnerHTML={{
+        __html: `<elevenlabs-convai agent-id="${agentId}"></elevenlabs-convai>`
+      }} />
 
       {callStatus === 'idle' && (
-        <div className="text-sm text-muted-foreground text-center max-w-md">
-          <p>💡 Tip: Find a quiet space and speak clearly. The interview typically takes 3-5 minutes.</p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          💡 Find a quiet space. Interview takes 3-5 minutes.
+        </p>
       )}
     </div>
   );

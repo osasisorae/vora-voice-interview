@@ -14,14 +14,14 @@ interface VoiceInterviewProps {
 
 const MIN_DURATION_FOR_COMPLETE = 60;
 
-// Helper to escape strings for HTML attribute
-function escapeForJson(str: string): string {
+// Simple text cleaner - remove problematic characters
+function cleanText(str: string): string {
   return str
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, ' ')
-    .replace(/\r/g, '')
-    .replace(/'/g, "\\'");
+    .replace(/[\n\r\t]/g, ' ')  // Replace newlines/tabs with space
+    .replace(/'/g, '')           // Remove apostrophes (they break HTML attribute)
+    .replace(/"/g, '')           // Remove quotes
+    .replace(/\\/g, '')          // Remove backslashes
+    .trim();
 }
 
 export function VoiceInterview({ 
@@ -37,13 +37,15 @@ export function VoiceInterview({
   const startTimeRef = useRef<Date | null>(null);
   const widgetRef = useRef<HTMLDivElement>(null);
 
-  // Build dynamic variables JSON - escape special characters
-  const dynamicVarsJson = JSON.stringify({
-    user_name: escapeForJson(userName || 'there'),
-    role_title: escapeForJson(roleTitle),
-    role_description: escapeForJson(roleDescription.substring(0, 200)),
-    interview_questions: escapeForJson(interviewQuestions.slice(0, 3).join(' | ')),
-  });
+  // Build dynamic variables - clean text to avoid JSON/HTML issues
+  const dynamicVars = {
+    user_name: cleanText(userName || 'there'),
+    role_title: cleanText(roleTitle),
+    role_description: cleanText(roleDescription.substring(0, 150)),
+    interview_questions: cleanText(interviewQuestions.slice(0, 2).join(' and ')),
+  };
+  // Use double quotes for HTML attribute, escape for safety
+  const dynamicVarsJson = JSON.stringify(dynamicVars).replace(/'/g, '&#39;');
 
   const handleCallEnd = useCallback(() => {
     const duration = startTimeRef.current 

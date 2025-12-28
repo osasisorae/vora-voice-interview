@@ -35,7 +35,8 @@ export function VoiceInterview({
   const [callStatus, setCallStatus] = useState<'idle' | 'active' | 'ended'>('idle');
   const [callResult, setCallResult] = useState<'completed' | 'incomplete' | null>(null);
   const startTimeRef = useRef<Date | null>(null);
-  const widgetRef = useRef<HTMLDivElement>(null);
+  const widgetContainerRef = useRef<HTMLDivElement>(null);
+  const widgetCreatedRef = useRef(false);
 
   // Build dynamic variables - clean text to avoid JSON/HTML issues
   const dynamicVars = {
@@ -44,7 +45,6 @@ export function VoiceInterview({
     role_description: cleanText(roleDescription.substring(0, 150)),
     interview_questions: cleanText(interviewQuestions.slice(0, 2).join(' and ')),
   };
-  // Use double quotes for HTML attribute, escape for safety
   const dynamicVarsJson = JSON.stringify(dynamicVars).replace(/'/g, '&#39;');
 
   const handleCallEnd = useCallback(() => {
@@ -63,6 +63,7 @@ export function VoiceInterview({
     }
   }, [onInterviewComplete]);
 
+  // Create widget only once on mount
   useEffect(() => {
     // Load widget script
     if (!document.querySelector('script[src*="convai-widget-embed"]')) {
@@ -70,6 +71,15 @@ export function VoiceInterview({
       script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
       script.async = true;
       document.body.appendChild(script);
+    }
+
+    // Create widget element only once
+    if (widgetContainerRef.current && !widgetCreatedRef.current) {
+      const widget = document.createElement('elevenlabs-convai');
+      widget.setAttribute('agent-id', agentId);
+      widget.setAttribute('dynamic-variables', dynamicVarsJson);
+      widgetContainerRef.current.appendChild(widget);
+      widgetCreatedRef.current = true;
     }
 
     const setupListeners = () => {
@@ -89,7 +99,7 @@ export function VoiceInterview({
 
     setTimeout(setupListeners, 500);
     setTimeout(setupListeners, 1500);
-  }, [handleCallEnd]);
+  }, [agentId, dynamicVarsJson, handleCallEnd]);
 
   const retryInterview = () => {
     setCallResult(null);
@@ -144,13 +154,8 @@ export function VoiceInterview({
         </Alert>
       )}
 
-      {/* Widget with dynamic variables - default phone icon UI */}
-      <div 
-        ref={widgetRef}
-        dangerouslySetInnerHTML={{
-          __html: `<elevenlabs-convai agent-id="${agentId}" dynamic-variables='${dynamicVarsJson}'></elevenlabs-convai>`
-        }} 
-      />
+      {/* Widget container - widget is created once via useEffect, not re-rendered */}
+      <div ref={widgetContainerRef} />
 
       {callStatus === 'idle' && (
         <p className="text-sm text-muted-foreground">
